@@ -1,4 +1,6 @@
 # Feedback Driven Wind Simulations - Analysis
+> Note: Updated fork from the original scripts repository, which can be found [here](https://github.com/nelson-group/raph_thesis_scripts)
+
 Repository containing the scripts used to compare and analyze a suite of galactic wind simulations built using a modified version of the AREPO moving mesh code (available [here](https://github.com/nelson-group/raph_arepo)). The suite was built as part of a Master Thesis project at the Heidelberg Institute of Theoretical Astrophysics under the supervision of Dr. Dylan Nelson. 
 
 See here for a copy of the [thesis](./msc_thesis.pdf). The styling was adopted from the LaTeX template of [Nils Vu](https://github.com/nilsvu/msc-thesis).
