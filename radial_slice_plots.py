@@ -3,8 +3,8 @@
     The snapshots here provide a visual representation of the central edge of the disk of the galaxy. 
 
     Set up a sys argv for the run directory
-    TODO: Fix rasterization
-    TODO: Setup a utilities folder - load snapshots, making voronoi slices, and plots -> reduces the overall codebase size
+    TODO: improve rasterizations
+    TODO: Setup a utilities file - load snapshots, making voronoi slices, and plots to reduce the overall codebase size
 '''
 
 import h5py
@@ -33,8 +33,8 @@ z_solar = 0.02
 
 #### Configuration Options ####
 FACE_ON = False # Was predominantly used for examnining initial conditions and was rarely used for simulation analysis outside of diagnostics
-T0_PLOT = True # Set to False if FACE_ON - pointless otherwise
-CC85_PLOTS = True # Set to False if FACE_ON - pointless otherwise
+T0_PLOT = True # Set to False if FACE_ON 
+CC85_PLOTS = True # Set to False if FACE_ON
 EXTENDED = True
 COOLING = True
 
@@ -42,7 +42,6 @@ simulation_directory = str(sys.argv[1])
 
 ################################
 if FACE_ON: print("FACE_ON enabled.")
-
 else: print("FACE_ON disabled. Output will be edge-on")
 
 keys = ['Coordinates', 'Density', 'Velocities', 'InternalEnergy']
@@ -71,7 +70,6 @@ with h5py.File(filename,'r') as f:
 M_load = parameters["M_load"]
 E_load = parameters["E_load"]
 R = parameters["injection_radius"] # injection radius in kpc
-sfr = parameters["sfr"]
 UnitVelocity_in_cm_per_s = parameters["UnitVelocity_in_cm_per_s"] # 1 km/s
 UnitLength_in_cm = parameters["UnitLength_in_cm"] # 1 kpc 
 UnitMass_in_g = parameters["UnitMass_in_g"] # 1 solar mass
@@ -169,6 +167,7 @@ def plot_face(ax, coordinates, value, bins, center, boxsize, minimum, maximum, l
     ax.set_ylabel('Y [kpc]', fontsize=13)
     ax.tick_params(axis='both', which='major', labelsize=11)
 
+
 def plot_edge(ax, coordinates, value, bins, center, boxsize, minimum, maximum, log, tree):
     stat, x_edge, z_edge = make_voronoi_slice_edge(coordinates, value, bins, center, boxsize, tree)
     edge_mesh = ax.pcolormesh(x_edge, z_edge, stat.T, shading='auto')
@@ -187,7 +186,7 @@ def make_cbar(plot_name, ax, pad, labeling, label_ticks, log):
     cbar.set_ticks(label_ticks)
     if log:cbar.set_ticklabels([round(np.log10(label)) for label in (label_ticks)])
 
-def quantity_plots(ax, coord, quantity, ang_quant, prof_bins, stat, upper_x, ylims, ylabeling, log):
+def plot_quant(ax, coord, quantity, ang_quant, init_quant, cc85_sol, prof_bins, stat, upper_x, ylims, ylabeling, log):
     quantity_stat, r_edge, _ = stats.binned_statistic(coord, quantity, bins=prof_bins, statistic=stat, range=(0, upper_x))
     quant_ser = pd.Series(quantity_stat).ffill() # NOTE: we convert to a p.series to better fill in missing bins since the z-axis tends to not have as many values
     if log: ax.semilogy(r_edge[:-1], quant_ser, color='midnightblue', label = r"t = $%0.1f$ Myr" % times) 
@@ -200,15 +199,28 @@ def quantity_plots(ax, coord, quantity, ang_quant, prof_bins, stat, upper_x, yli
         else: ax.plot(r_edge_a[:-1], quant_a, color='green', label = r"Bicone - t = $%0.1f$ Myr" % times) 
         ax.set_xlabel("Radius [kpc]", fontsize=13)
 
+    if T0_PLOT: 
+        if log: ax.semilogy(init_quant[:,0], init_quant[:,1], label='t = 0.0 Myr', color='midnightblue', linestyle="dashed")
+        else: ax.plot(init_quant[:,0], init_quant[:,1], label='t = 0.0 Myr', color='midnightblue', linestyle="dashed")
+    if CC85_PLOTS: 
+        if log: ax.semilogy(r_an, cc85_sol, label='CC85', color='red') 
+        else: ax.plot(r_an, cc85_sol, label='CC85', color='red') 
+
     ax.set(xlim=(0, upper_x), ylim=ylims)    
     ax.set_ylabel(ylabeling, fontsize=13)
     ax.tick_params(axis='both', which='major', labelsize=11)
+    ax.legend(loc='upper right', fontsize=13)
 
 def custom_tick_labels(x, pos):
     return f"{x - boxsize/2:.0f}"
 
 ## ANALYTIC SOLUTION CALCULATION FOR COMPARISION - CHANGE NUMBERS AS NEEDED ###
 if (CC85_PLOTS):
+    M_load = parameters["M_load"]
+    E_load = parameters["E_load"]
+    R = parameters["injection_radius"]
+    sfr = parameters["sfr"]
+
     r_an = np.linspace(0.001, boxsize, 1500)
     r_in = r_an[np.where(r_an <= R)]
     r_out = r_an[np.where(r_an > R)]
@@ -234,6 +246,7 @@ if (CC85_PLOTS):
 
     rho_in = M_dot_code/(4*np.pi*v_in)*(r_in/R**3)*UnitDensity_in_cgs
     rho_out = M_dot_code/(4*np.pi*v_out)*1/r_out**2*UnitDensity_in_cgs
+
     rho_an = np.concatenate([rho_in, rho_out])
     rho_n = np.concatenate([rho_in, rho_out])/PROTON_MASS_GRAMS # rho/(proton mass)
 
@@ -309,6 +322,7 @@ for i in np.arange(90, 101): # select the snapshot range to go through
     temperature = Temp_S(abundance, internal_energy)
     number_density = density*UnitNumberDensity   
 
+    sfr = parameters["sfr"]
     t = header["Time"]
     times = t*1000
 
@@ -328,7 +342,6 @@ for i in np.arange(90, 101): # select the snapshot range to go through
         r_coord = radial_coord[mask] 
         dens = density[mask]
         temps = temperature[mask]
-
     else:
         mask = (y_coord >= lower_bound) & (y_coord <= upper_bound) # & (radius <= inner_boxsize/2*np.sqrt(3))
         radial_velocity_spherical = (vel_x*rad_x + vel_y*rad_y + vel_z*rad_z)/(radius + eps)
@@ -390,11 +403,8 @@ for i in np.arange(90, 101): # select the snapshot range to go through
 
     # DENSITY RADIAL PROFILE
     ax4 = fig.add_subplot(2,3,4)
-    quantity_plots(ax4, r_coord, dens*UnitNumberDensity, density*UnitNumberDensity, prof_bins, "median", upper_x, (1e-5,1e5), r"Density [$\rm cm^{-3}$]", log=True)
-    if T0_PLOT: ax4.semilogy(rho_init[:,0], rho_init[:,1], label="t = 0.0 Myr", linestyle="dashed", color='midnightblue') 
-    if CC85_PLOTS: ax4.plot(r_an, rho_n, label='CC85' % times, color='crimson') 
-    ax4.legend(loc='upper right', fontsize=13)
-
+    plot_quant(ax4, r_coord, dens*UnitNumberDensity, density*UnitNumberDensity, rho_init, rho_n, prof_bins, "median", upper_x, (1e-5,1e5), r"Density [$\rm cm^{-3}$]", log=True)
+ 
     # VELOCITY RADIAL PROFILE 
     ax5 = fig.add_subplot(2,3,5)
     if FACE_ON: # deviates from the rest of the other plots and we're only using it once, so keep it seperate..
@@ -407,18 +417,11 @@ for i in np.arange(90, 101): # select the snapshot range to go through
         ax5.set_xlabel("Radial Distance [kpc]", fontsize=13)
         ax5.set_ylabel("Velocity [km/s]", fontsize=13)
         ax5.set_ylim(-20, 220) # For a relaxed disk that is settled into equilibrium, the radial velocity should be around 0.
-    else:
-        quantity_plots(ax5, r_coord, rv_z, radial_velocity_spherical, prof_bins, "median", upper_x, (-10, 1500), "Radial Velocity [km/s]", log=False)
-        if T0_PLOT: ax5.plot(vr_init[:,0], vr_init[:,1], label='t = 0.0 Myr', color='midnightblue', linestyle="dashed")
-        if CC85_PLOTS: ax5.plot(r_an, v_an, label='CC85' % times, color='crimson') 
-    ax5.legend(loc='upper right', fontsize=13)
+    else: plot_quant(ax5, r_coord, rv_z, radial_velocity_spherical, vr_init, v_an, prof_bins, "median", upper_x, (-10, 1500), "Radial Velocity [km/s]", log=False)
 
     # TEMPERATURE RADIAL PROFILE
     ax6 = fig.add_subplot(2,3,6) 
-    quantity_plots(ax6, r_coord, temps, temperature, prof_bins, "median", upper_x, (1e3,1e8), "Temperature [K]", log=True)
-    if T0_PLOT: ax6.semilogy(T_init[:,0], T_init[:,1], label='t = 0.0 Myr', color='midnightblue', linestyle="dashed")
-    if CC85_PLOTS: ax6.semilogy(r_an, temp_an, label='CC85', color='red') 
-    ax6.legend(loc="upper right", fontsize=13)
+    plot_quant(ax6, r_coord, temps, temperature, T_init, temp_an, prof_bins, "median", upper_x, (1e3,1e8), "Temperature [K]", log=True)
 
     plt.tight_layout(w_pad=0.00, h_pad=0.00)
     # SAVING THE IMAGES FOR TIMESTEP t 
