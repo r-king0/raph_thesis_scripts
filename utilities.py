@@ -1,5 +1,5 @@
 '''
-    Defines the functions and constants that are used in the jupyter-notebooks.
+    Commonly used functions across scripts and notebooks. 
 '''
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,6 +15,7 @@ GRAVITIONAL_CONSTANT_IN_CGS = 6.6738e-8
 HUBBLE = 3.2407789e-18
 M_PI = 3.14159265358979323846
 seconds_in_yrs = 3.154e+7
+z_solar = 0.02
 
 ##### UNITS #####
 UnitVelocity_in_cm_per_s = 1e5 # 10 km/sec 
@@ -22,14 +23,25 @@ UnitLength_in_cm = 3.085678e21 # 1 kpc
 UnitMass_in_g  = 1.989e33 # 1 solar mass
 UnitTime_in_s = UnitLength_in_cm / UnitVelocity_in_cm_per_s # 3.08568e+16 seconds 
 UnitEnergy_in_cgs = UnitMass_in_g * pow(UnitLength_in_cm, 2) / pow(UnitTime_in_s, 2) # 1.9889999999999999e+43 erg
+UnitDensity_in_cgs = UnitMass_in_g / pow(UnitLength_in_cm, 3) # 6.76989801444063e-32 g/cm^3
+UnitPressure_in_cgs = UnitMass_in_g / UnitLength_in_cm / pow(UnitTime_in_s, 2) # 6.769911178297542e-22 barye
+
 
 G_code = GRAVITIONAL_CONSTANT_IN_CGS/(pow(UnitLength_in_cm,3) * pow(UnitMass_in_g, -1) * pow(UnitTime_in_s, -2)) 
 Hubble_code = HUBBLE * UnitTime_in_s # All.Hubble in Arepo
 
-##### FUNCTIONS  #####
-### Equations ###
-## Potentials and Energies ## 
-## Options for NF
+# EQUATIONS 
+## Temperature calculation - used for every plot ##
+### Mean molecular weight based off of an electron abundance - currently x_e = 1, but subject to change in future simulations
+def mean_molecular_weight(x_e):
+    return (4/(1+3*HYDROGEN_MASS_FRACTION + 4*HYDROGEN_MASS_FRACTION*x_e)) * PROTON_MASS_GRAMS
+
+### Equation for temperature - taken from the TNG project website
+def Temp_S(x_e, ie):
+    return (gamma - 1) * ie/kb * (UnitEnergy_in_cgs/UnitMass_in_g)*mean_molecular_weight(x_e)
+
+## Potentials ## 
+### NFW 
 def enclosed_mass(R, NFW_M200, NFW_Eps, NFW_C): # concentration of the NFW potential, 10 for M82): # NFW_Eps can either be 0.01 or 0.05
     fac = 1
     R200 = pow( NFW_M200 * G_code / (100 * Hubble_code * Hubble_code), 1.0 / 3) 
@@ -39,60 +51,94 @@ def enclosed_mass(R, NFW_M200, NFW_Eps, NFW_C): # concentration of the NFW poten
     R = np.minimum(R, Rs * NFW_C)
     return fac * 4 * M_PI * RhoCrit * Dc * (-(Rs * Rs * Rs * (1 - NFW_Eps + np.log(Rs) - 2 * NFW_Eps * np.log(Rs) + NFW_Eps * NFW_Eps * np.log(NFW_Eps * Rs))) / ((NFW_Eps - 1) * (NFW_Eps - 1)) + (Rs * Rs * Rs * (Rs - NFW_Eps * Rs - (2 * NFW_Eps - 1) * (R + Rs) * np.log(R + Rs) + NFW_Eps * NFW_Eps * (R + Rs) * np.log(R + NFW_Eps * Rs))) /((NFW_Eps - 1) * (NFW_Eps - 1) * (R + Rs)))
 
-def stellar_potential(z, radial, Mstars, Rstars, zstars_in_UnitLength): 
-    return - G_code*(Mstars)/(np.sqrt(pow(radial,2) + pow(Rstars + np.sqrt(pow(z, 2) + pow(zstars_in_UnitLength,2)) , 2)))
-
 def NFW_DM_halo_potential_v2(NFW_M200, radius, NFW_Eps, NFW_C):
     m = enclosed_mass(NFW_M200, NFW_Eps, radius, NFW_C)
     return -(G_code * m) / radius 
 
+### Miyamoto-Nagai
+def stellar_potential(z, radial, Mstars, Rstars, zstars_in_UnitLength): 
+    return - G_code*(Mstars)/(np.sqrt(pow(radial,2) + pow(Rstars + np.sqrt(pow(z, 2) + pow(zstars_in_UnitLength,2)) , 2)))
+
 ## Analytic solutions for the CC85 model ##
-# Interior solution
+#### Interior solution
 def sol_in(M, r, R):
     T1 = ((3*gamma + 1/M**2)/(1+3*gamma))**(-(3*gamma+1)/(5*gamma+1))
     T2 = ((gamma - 1 + 2/M**2)/(1 + gamma))**((gamma+1)/(2*(5*gamma+1)))
     return T1*T2 - r/R
 
-# Solution outside the injection radius
-##### Taken from Chevalier and Clegg 85
+#### Solution outside the injection radius
 def sol_out(M, r, R):
     T = ((gamma - 1 + 2/M**2)/(1 + gamma))**((gamma + 1)/(2*(gamma - 1)))
     result = M**(2/(gamma - 1))*T - (r/R)**2
     return result
 
-# Mean molecular weight based off of an electron abundance - currently x_e = 1, but subject to change in future simulations
-def mean_molecular_weight(x_e):
-    return (4/(1+3*HYDROGEN_MASS_FRACTION + 4*HYDROGEN_MASS_FRACTION*x_e)) * PROTON_MASS_GRAMS
-
-# Equation for temperature - taken from the TNG project website
-def Temp_S(x_e, ie):
-    return (gamma - 1) * ie/kb * (UnitEnergy_in_cgs/UnitMass_in_g)*mean_molecular_weight(x_e)
-
-### Plots ###
-def make_voronoi_slice_edge(gas_xyz, gas_values, image_num_pixels, image_y_value, image_xz_max): 
-    interp = interpolate.NearestNDInterpolator(gas_xyz, gas_values)  # declare an interpolator of coordinates and values associated with the coordinates
+# PLOTS #
+### Voronooi Slices
+# NOTE: previous versions used an interpolator that resulted in the code recreating itself at each stage. Newer versions instead use a tree. 
+def make_voronoi_slice_edge(gas_xyz, gas_values, image_num_pixels, image_y_value, image_xz_max, tree): 
     s = image_xz_max/image_num_pixels
     xs = np.arange(np.min(gas_xyz), np.max(gas_xyz)+s, s)
     zs = np.arange(np.min(gas_xyz), np.max(gas_xyz)+s, s)
-
     X,Z = np.meshgrid(xs,zs)
-    M_coords = np.transpose(np.vstack([X.ravel(), np.full(len(X.ravel()), image_y_value), Z.ravel()]))
-    result = np.transpose(interp(M_coords).reshape(len(xs), len(zs)))
 
-    return result, np.array(xs), np.array(zs)
+    # NOTE: np.transpose(np.vstack(...)) is equivalent to np.column_stack()
+    M_coords = np.column_stack([X.ravel(), np.full(len(X.ravel()), image_y_value), Z.ravel()])
+    _, idx = tree.query(M_coords)
+    result = np.transpose(gas_values[idx].reshape(len(xs), len(zs))) # rotate to main consistency
 
-def make_voronoi_slice_face(gas_xyz, gas_values, image_num_pixels, image_z_value, image_xy_max): 
-    interp = interpolate.NearestNDInterpolator(gas_xyz, gas_values)
+    return result, xs, zs # NOTE: np.array(xs) -> just xs, it's already an np array
+
+def make_voronoi_slice_face(gas_xyz, gas_values, image_num_pixels, image_z_value, image_xy_max, tree): 
     s = image_xy_max/image_num_pixels
     xs = np.arange(np.min(gas_xyz), np.max(gas_xyz)+s, s)
     ys = np.arange(np.min(gas_xyz), np.max(gas_xyz)+s, s) 
-
     X,Y = np.meshgrid(xs,ys)
-    M_coords = np.transpose(np.vstack([X.ravel(), Y.ravel(), np.full(len(X.ravel()), image_z_value)] ))
-    result = np.transpose(interp(M_coords).reshape(len(ys), len(xs)))
+
+    M_coords = np.column_stack([X.ravel(), Y.ravel(), np.full(len(X.ravel()), image_z_value)])
+    _, idx = tree.query(M_coords)
+    result = np.transpose(gas_values[idx].reshape(len(xs), len(ys))) # rotate to main consistency
 
     return result, np.array(xs), np.array(ys)
 
+def plot_face(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, log, tree):
+    stat, x_edge, y_edge = make_voronoi_slice_face(coordinates, value, bins, center, boxsize, tree)
+    face_mesh = ax.pcolormesh(x_edge, y_edge, stat.T, shading='auto')
+    if (log): face_mesh.set_norm(colors.LogNorm(vmin=minimum, vmax=maximum))
+    else: face_mesh.set_clim(minimum, maximum)
+
+    def custom_tick_labels(x, pos):
+        return f"{x - boxsize/2:.0f}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
+    ax.set_xlabel('X [kpc]', fontsize=13)
+    ax.set_ylabel('Y [kpc]', fontsize=13)
+    ax.tick_params(axis='both', which='major', labelsize=11)
+
+def plot_edge(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, log, tree):
+    stat, x_edge, z_edge = make_voronoi_slice_edge(coordinates, value, bins, center, boxsize, tree)
+    edge_mesh = ax.pcolormesh(x_edge, z_edge, stat.T, shading='auto')
+    if (log): edge_mesh.set_norm(colors.LogNorm(vmin=minimum, vmax=maximum))
+    else: edge_mesh.set_clim(minimum, maximum)
+    ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
+
+    def custom_tick_labels(x, pos):
+        return f"{x - boxsize/2:.0f}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.set_xlabel('X [kpc]', fontsize=13)
+    ax.set_ylabel('Z [kpc]', fontsize=13)
+    ax.tick_params(axis='both', which='major', labelsize=11)
+
+def make_cbar(plot_name, ax, pad, labeling, label_ticks, log):
+    cbar = plt.colorbar(plot_name, ax = ax, pad=pad) 
+    cbar.set_label(labeling, fontsize=13)
+    cbar.set_ticks(label_ticks)
+    if log:cbar.set_ticklabels([round(np.log10(label)) for label in (label_ticks)])
+
+## Other plots
 def radial_mass_flux(dr, vs, m):
     return 1/dr * np.sum(vs*m)
 
@@ -131,22 +177,7 @@ def plot_histogram(y_bins, x_bins, stat_bin, cmap, ax, cbins, x_label, y_label, 
     if (i == 2) or (i == 3): # if bottom row
         ax.set_xlabel(x_label, fontsize="large")
 
-
-# ### Note: These likely will work, but I haven't tested these out yet. 
-# def plot_face(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, log):
-#     stat, x_edge, y_edge = make_voronoi_slice_face(coordinates, value, bins, center, boxsize)
-#     ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
-#     face_mesh = ax.pcolormesh(x_edge, y_edge, stat.T, shading='auto')
-#     if (log): face_mesh.set_norm(colors.LogNorm(vmin=minimum, vmax=maximum))
-#     else: face_mesh.set_clim(minimum, maximum)
-
-#     def custom_tick_labels(x, pos):
-#         return f"{x - boxsize/2:.0f}"
-#     ax.xaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
-#     ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
-#     ax.set_xlabel('X [kpc]')
-#     ax.set_ylabel('Y [kpc]')
-
+## DEPRECATED or UNUSED
 # def plot_edge(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, log):
 #     stat, x_edge, z_edge = make_voronoi_slice_edge(coordinates, value, bins, center,  boxsize)
 #     ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
@@ -160,3 +191,6 @@ def plot_histogram(y_bins, x_bins, stat_bin, cmap, ax, cbins, x_label, y_label, 
 #     ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
 #     ax.set_xlabel('X [kpc]')
 #     ax.set_ylabel('Z [kpc]')
+
+# def get_statistics(H, H_cold, H_r, Hr_cold, dr):
+#     return calculate_fluxes(H, dr, axis=(1,2,3)), calculate_fluxes(H_cold, dr, axis=(1,2,3)), calculate_fluxes(H_r, dr, axis=(2,3)) ,  calculate_fluxes(H_r, dr, axis=(1,3)),  calculate_fluxes(H_r, dr, axis=(1,2)),  calculate_fluxes(Hr_cold, dr, axis=(1,3)),  calculate_fluxes(Hr_cold, dr, axis=(1, 2))
