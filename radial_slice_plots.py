@@ -1,12 +1,10 @@
 '''
     This file generates plots for density, energy, velocity, and temperature as the galactic disk as a function of a radial distance.
     The snapshots here provide a visual representation of the central edge of the disk of the galaxy. 
-
-    TODO: Fix rasterization
-    TODO: move load snapshots to the utlities file
 '''
 
 import h5py
+import time 
 import sys
 import numpy as np    
 import matplotlib as mpl
@@ -21,7 +19,7 @@ import pandas as pd
 mpl.rcParams['agg.path.chunksize'] = 10000 # cell overflow fix
 
 ### IMPORTANT FUNCTIONS ### 
-from utilities import Temp_S, sol_in, sol_out, mean_molecular_weight, plot_edge, plot_face, make_cbar
+from utilities import load_snapshots, Temp_S, sol_in, sol_out, mean_molecular_weight, plot_edge, plot_face, make_cbar
 ### PHYSICAL CONSTANTS ###
 from utilities import PROTON_MASS_GRAMS, gamma, kb, z_solar
 ### Units
@@ -48,22 +46,17 @@ if COOLING: keys.append('ElectronAbundance')
 data = {}
 ### PARAMETER CONSTANTS AND INITIAL VALUES ###
 filename = simulation_directory + "/snap_000.hdf5" 
-with h5py.File(filename,'r') as f:
-    parameters = dict(f['Parameters'].attrs)
-    cells_per_dim = int(np.cbrt(len(f['PartType0']['Density'][()])))
-    for key in keys:
-        data[key] = f['PartType0'][key][()]
-    header = dict(f['Header'].attrs)
-    x_coord = data["Coordinates"][:,0] 
-    y_coord = data["Coordinates"][:,1]
-    z_coord = data["Coordinates"][:,2]
-    density = data["Density"]
-    internal_energy = data["InternalEnergy"] # NOTE: This is specific internal energy, not the actual internal energy
-    vel_x = data["Velocities"][:,0]
-    vel_y = data["Velocities"][:,1] 
-    vel_z = data["Velocities"][:,2] 
-    if COOLING: abundance = data["ElectronAbundance"]
-    else: abundance = 1
+data, header, parameters = load_snapshots(filename, keys)
+x_coord = data["Coordinates"][:,0] 
+y_coord = data["Coordinates"][:,1]
+z_coord = data["Coordinates"][:,2]
+density = data["Density"]
+internal_energy = data["InternalEnergy"] # NOTE: This is specific internal energy, not the actual internal energy
+vel_x = data["Velocities"][:,0]
+vel_y = data["Velocities"][:,1] 
+vel_z = data["Velocities"][:,2] 
+if COOLING: abundance = data["ElectronAbundance"]
+else: abundance = 1
 
 M_load = parameters["M_load"]
 E_load = parameters["E_load"]
@@ -74,7 +67,7 @@ boxsize = parameters["BoxSize"] # boxsize in kpc
 inner_boxsize = 10
 angle_l = 60
 halfbox = boxsize/2
-dx = inner_boxsize/cells_per_dim
+dx = inner_boxsize/300
 eps = dx/1e4
 halfbox_inner = inner_boxsize/2 
 lower_bound, upper_bound = halfbox - dx*6, halfbox + eps*6
@@ -206,13 +199,11 @@ if T0_PLOT:
     T_init = np.column_stack( (r[:-1], T) )
 
 ######### SIMULATION DATA #########
+start = time.time()
 data = {}
-for i in np.arange(90, 101): # select the snapshot range to go through
+for i in np.arange(100, 101): # select the snapshot range to go through
     filename = simulation_directory + "/snap_%03d.hdf5" % i
-    with h5py.File(filename,'r') as f:
-        for key in keys:
-            data[key] = f['PartType0'][key][()]
-        header = dict(f['Header'].attrs)
+    data, header, parameters = load_snapshots(filename, keys)
     coord = data["Coordinates"]
     x_coord = data["Coordinates"][:,0] 
     y_coord = data["Coordinates"][:,1]
@@ -230,6 +221,9 @@ for i in np.arange(90, 101): # select the snapshot range to go through
     sfr = parameters["sfr"]
     t = header["Time"]
     times = t*1000
+
+    current_time = time.time()
+    print("time at reading data: ", current_time - start)  
 
     ''' Get the radial distance of the box'''
     rad_x, rad_y, rad_z = x_coord - 0.5*boxsize, y_coord - 0.5*boxsize, z_coord - 0.5*boxsize
@@ -262,6 +256,9 @@ for i in np.arange(90, 101): # select the snapshot range to go through
         r_coord = radius[z_mask]
 
     tree = cKDTree(coord[mask]) # coordinates change with each snapshot so keep it different
+
+    current_time = time.time()
+    print("beginning slice plots: ", current_time - start)  
 
     ### PLOTS ###
     fig = plt.figure(figsize=(15,9)) # 20/12 = 15/9
@@ -306,6 +303,9 @@ for i in np.arange(90, 101): # select the snapshot range to go through
     circle_bi = patches.Circle((50,50), radius=30, color="white", linestyle="solid", linewidth=2, fill=False)
     ax3.add_patch(circle_bi)
 
+    current_time = time.time()
+    print("slice plots complete, plotting radial profiles: ", current_time - start)  
+
     # DENSITY RADIAL PROFILE
     ax4 = fig.add_subplot(2,3,4)
     plot_quant(ax4, r_coord, dens*UnitNumberDensity, density*UnitNumberDensity, rho_init, rho_n, prof_bins, "median", upper_x, (1e-5,1e5), r"Density [$\rm cm^{-3}$]", log=True)
@@ -329,6 +329,8 @@ for i in np.arange(90, 101): # select the snapshot range to go through
     plot_quant(ax6, r_coord, temps, temperature, T_init, temp_an, prof_bins, "median", upper_x, (1e3,1e8), "Temperature [K]", log=True)
 
     plt.tight_layout(w_pad=0.00, h_pad=0.00)
+    current_time = time.time()
+    print("Plots complete, saving figure: ", current_time - start)  
 
     # SAVING THE IMAGES FOR TIMESTEP t 
     if EXTENDED:
@@ -339,3 +341,9 @@ for i in np.arange(90, 101): # select the snapshot range to go through
         else: img_name = "edge_t" + "%0.5f" % t
     print("generating image for time: ", str(t))
     plt.savefig(output_directory + img_name + ".png", dpi=150, bbox_inches='tight') 
+    
+    current_time = time.time()
+    print("saving complete:", current_time - start)  
+
+end = time.time()
+print("elapsed time: ", end - start)

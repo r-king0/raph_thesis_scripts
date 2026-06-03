@@ -1,9 +1,11 @@
 '''
     Commonly used functions across scripts and notebooks. 
 '''
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+import h5py
 from matplotlib.ticker import FuncFormatter
 from scipy import interpolate
 
@@ -29,6 +31,16 @@ UnitPressure_in_cgs = UnitMass_in_g / UnitLength_in_cm / pow(UnitTime_in_s, 2) #
 
 G_code = GRAVITIONAL_CONSTANT_IN_CGS/(pow(UnitLength_in_cm,3) * pow(UnitMass_in_g, -1) * pow(UnitTime_in_s, -2)) 
 Hubble_code = HUBBLE * UnitTime_in_s # All.Hubble in Arepo
+
+# LOAD SNAPSHOTS
+def load_snapshots(filename, keys):
+    data = {}
+    with h5py.File(filename,'r') as f:
+        parameters = dict(f['Parameters'].attrs)
+        header = dict(f['Header'].attrs)
+        for key in keys:
+            data[key] = f['PartType0'][key][()]
+    return data, header, parameters
 
 # EQUATIONS 
 ## Temperature calculation - used for every plot ##
@@ -138,6 +150,7 @@ def make_cbar(plot_name, ax, pad, labeling, label_ticks, log):
     cbar.set_ticks(label_ticks)
     if log:cbar.set_ticklabels([round(np.log10(label)) for label in (label_ticks)])
 
+
 ## Other plots
 def radial_mass_flux(dr, vs, m):
     return 1/dr * np.sum(vs*m)
@@ -177,7 +190,7 @@ def plot_histogram(y_bins, x_bins, stat_bin, cmap, ax, cbins, x_label, y_label, 
     if (i == 2) or (i == 3): # if bottom row
         ax.set_xlabel(x_label, fontsize="large")
 
-## DEPRECATED or UNUSED
+## DEPRECATED
 # def plot_edge(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, log):
 #     stat, x_edge, z_edge = make_voronoi_slice_edge(coordinates, value, bins, center,  boxsize)
 #     ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
