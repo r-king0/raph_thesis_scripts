@@ -42,8 +42,6 @@ else: print("FACE_ON disabled. Output will be edge-on")
 keys = ['Coordinates', 'Density', 'Velocities', 'InternalEnergy']
 if COOLING: keys.append('ElectronAbundance')
 
-
-data = {}
 ### PARAMETER CONSTANTS AND INITIAL VALUES ###
 filename = simulation_directory + "/snap_000.hdf5" 
 data, header, parameters = load_snapshots(filename, keys)
@@ -96,7 +94,7 @@ def plot_quant(ax, coord, quantity, ang_quant, init_quant, cc85_sol, prof_bins, 
     
     if FACE_ON: ax.set_xlabel("Radial Distance [kpc]", fontsize=13)
     else:   
-        quant_a, r_edge_a, _ = stats.binned_statistic(radius[angular_region], ang_quant[angular_region], bins=n_bins, statistic="median", range=(0, upper_x))
+        quant_a, r_edge_a, _ = stats.binned_statistic(coord[angular_region], ang_quant[angular_region], bins=n_bins, statistic="median", range=(0, upper_x))
         if log: ax.semilogy(r_edge_a[:-1], quant_a, color='green', label = r"Bicone - t = $%0.1f$ Myr" % times) 
         else: ax.plot(r_edge_a[:-1], quant_a, color='green', label = r"Bicone - t = $%0.1f$ Myr" % times) 
         ax.set_xlabel("Radius [kpc]", fontsize=13)
@@ -200,7 +198,6 @@ if T0_PLOT:
 
 ######### SIMULATION DATA #########
 start = time.time()
-data = {}
 for i in np.arange(100, 101): # select the snapshot range to go through
     filename = simulation_directory + "/snap_%03d.hdf5" % i
     data, header, parameters = load_snapshots(filename, keys)

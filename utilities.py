@@ -8,6 +8,7 @@ import matplotlib.colors as colors
 import h5py
 from matplotlib.ticker import FuncFormatter
 from scipy import interpolate
+from matplotlib.colors import SymLogNorm
 
 HYDROGEN_MASS_FRACTION = 0.76
 PROTON_MASS_GRAMS = 1.67262192e-24 # mass of proton in grams
@@ -116,6 +117,7 @@ def plot_face(ax, coordinates, value, bins, center, boxsize, minimum, maximum, h
     stat, x_edge, y_edge = make_voronoi_slice_face(coordinates, value, bins, center, boxsize, tree)
     face_mesh = ax.pcolormesh(x_edge, y_edge, stat.T, shading='auto')
     if (log): face_mesh.set_norm(colors.LogNorm(vmin=minimum, vmax=maximum))
+
     else: face_mesh.set_clim(minimum, maximum)
 
     def custom_tick_labels(x, pos):
@@ -144,12 +146,42 @@ def plot_edge(ax, coordinates, value, bins, center, boxsize, minimum, maximum, h
     ax.set_ylabel('Z [kpc]', fontsize=13)
     ax.tick_params(axis='both', which='major', labelsize=11)
 
+
+def plot_face_cr(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, linethresh, tree):
+    stat, x_edge, y_edge = make_voronoi_slice_face(coordinates, value, bins, center, boxsize, tree)
+    face_mesh = ax.pcolormesh(x_edge, y_edge, stat.T, shading='auto')
+    face_mesh.set_norm(SymLogNorm(linthresh=linethresh, vmin=minimum, vmax=maximum, base=10))
+
+    def custom_tick_labels(x, pos):
+        return f"{x - boxsize/2:.0f}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
+    ax.set_xlabel('X [kpc]', fontsize=13)
+    ax.set_ylabel('Y [kpc]', fontsize=13)
+    ax.tick_params(axis='both', which='major', labelsize=11)
+
+def plot_edge_cr(ax, coordinates, value, bins, center, boxsize, minimum, maximum, histb_l, histb_h, linethresh, tree):
+    stat, x_edge, z_edge = make_voronoi_slice_edge(coordinates, value, bins, center, boxsize, tree)
+    edge_mesh = ax.pcolormesh(x_edge, z_edge, stat.T, shading='auto')
+    edge_mesh.set_norm(SymLogNorm(linthresh=linethresh, vmin=minimum, vmax=maximum, base=10))
+    ax.set(xlim=(histb_l, histb_h), ylim=(histb_l, histb_h)) 
+
+    def custom_tick_labels(x, pos):
+        return f"{x - boxsize/2:.0f}"
+
+    ax.xaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
+    ax.set_xlabel('X [kpc]', fontsize=13)
+    ax.set_ylabel('Z [kpc]', fontsize=13)
+    ax.tick_params(axis='both', which='major', labelsize=11)
+
 def make_cbar(plot_name, ax, pad, labeling, label_ticks, log):
     cbar = plt.colorbar(plot_name, ax = ax, pad=pad) 
     cbar.set_label(labeling, fontsize=13)
     cbar.set_ticks(label_ticks)
     if log:cbar.set_ticklabels([round(np.log10(label)) for label in (label_ticks)])
-
 
 ## Other plots
 def radial_mass_flux(dr, vs, m):
@@ -170,6 +202,9 @@ def get_statistics_energy(H, H_cold, H_r, Hr_cold, dr):
 def calculate_std(flux_snaps): 
     f_snaps = np.stack(flux_snaps, axis=0)
     return np.percentile(f_snaps, 16, axis=0), np.percentile(f_snaps, 84, axis=0)   # shape: (len(r_analysis), n_bins)
+
+# def get_statistics(H, H_cold, H_r, Hr_cold, dr):
+#     return calculate_fluxes(H, dr, axis=(1,2,3)), calculate_fluxes(H_cold, dr, axis=(1,2,3)), calculate_fluxes(H_r, dr, axis=(2,3)) ,  calculate_fluxes(H_r, dr, axis=(1,3)),  calculate_fluxes(H_r, dr, axis=(1,2)),  calculate_fluxes(Hr_cold, dr, axis=(1,3)),  calculate_fluxes(Hr_cold, dr, axis=(1, 2))
 
 def plot_fluxes(ax, x_axis, fluxes, std_b, std_a, labeling, coloring,lining, shading):
     ax.plot(x_axis, fluxes, label=labeling, linestyle=lining, color=coloring)
@@ -204,6 +239,3 @@ def plot_histogram(y_bins, x_bins, stat_bin, cmap, ax, cbins, x_label, y_label, 
 #     ax.yaxis.set_major_formatter(FuncFormatter(custom_tick_labels))
 #     ax.set_xlabel('X [kpc]')
 #     ax.set_ylabel('Z [kpc]')
-
-# def get_statistics(H, H_cold, H_r, Hr_cold, dr):
-#     return calculate_fluxes(H, dr, axis=(1,2,3)), calculate_fluxes(H_cold, dr, axis=(1,2,3)), calculate_fluxes(H_r, dr, axis=(2,3)) ,  calculate_fluxes(H_r, dr, axis=(1,3)),  calculate_fluxes(H_r, dr, axis=(1,2)),  calculate_fluxes(Hr_cold, dr, axis=(1,3)),  calculate_fluxes(Hr_cold, dr, axis=(1, 2))
