@@ -1,3 +1,6 @@
+
+
+
 import numpy as np    
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,6 +16,7 @@ simulation_directory = str(sys.argv[1])
 output_directory = str(sys.argv[2]) 
 
 #### FUNCTIONS ####
+
 def calculate_cell_size(volume):
     return 2 * np.cbrt(volume * 3 /(4 * np.pi))
 
